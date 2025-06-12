@@ -1,0 +1,8 @@
+opencv-python 
+mtcnn 
+deepface 
+tensorflow 
+keras
+tensorflow 
+matplotlib 
+numpy
