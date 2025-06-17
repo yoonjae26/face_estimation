@@ -24,9 +24,18 @@ class GenderPredictor:
             model_path = os.path.join("models", "gender_model.h5")
             
         try:
-            self.model = load_model(model_path)
+            print(f"Loading gender model from: {model_path}")
+            self.model = load_model(model_path, compile=False)
+            print("Gender model loaded successfully.")
             self.input_shape = self.model.input_shape[1:3]  # Get expected input size
         except Exception as e:
+            print(f"Error details: {str(e)}")
+            print("Inspecting model file structure...")
+            import h5py
+            with h5py.File(model_path, 'r') as f:
+                print("Model file keys:", list(f.keys()))
+                if 'model_config' in f:
+                    print("Model config:", f['model_config'][:])
             raise Exception(f"Error loading gender model: {str(e)}")
             
         # Initialize face detector

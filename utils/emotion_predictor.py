@@ -28,8 +28,12 @@ class EmotionPredictor:
             model_path = os.path.join("models", "emotion_model.h5")
             
         try:
-            self.model = load_model(model_path)
-            self.input_shape = self.model.input_shape[1:3]  # Get expected input size
+            self.model = load_model(model_path)            # Get expected input size and ensure it's valid
+            input_shape = self.model.input_shape
+            if input_shape is None or len(input_shape) < 3:
+                raise ValueError("Invalid model input shape")
+            self.target_size = (64, 64)  # width, height - use same size as other models
+            self.target_channels = input_shape[3] if len(input_shape) > 3 else 1
         except Exception as e:
             raise Exception(f"Error loading emotion model: {str(e)}")
     
@@ -38,31 +42,32 @@ class EmotionPredictor:
         Preprocess face image for emotion prediction
         
         Args:
-            face_img (numpy.ndarray): Input face image (BGR format)
+            face_img (numpy.ndarray): Input face image (RGB format, shape (1, 64, 64, 3) hoặc (64, 64, 3))
             
         Returns:
-            numpy.ndarray: Preprocessed image
+            numpy.ndarray: Preprocessed image phù hợp với model
         """
         try:
-            if face_img is None:
-                raise ValueError("Invalid input image")
-                
-            # Convert to grayscale if image is BGR
-            if len(face_img.shape) == 3:
-                face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
-                
-            # Resize to expected input size
-            face_img = cv2.resize(face_img, self.input_shape)
-            
-            # Normalize pixel values
-            face_img = face_img.astype('float32') / 255.0
-            
-            # Add channel and batch dimensions
-            face_img = np.expand_dims(face_img, axis=-1)
-            face_img = np.expand_dims(face_img, axis=0)
-            
-            return face_img
-            
+            # Nếu input đã có batch dimension
+            if len(face_img.shape) == 4:
+                img = face_img[0]
+            else:
+                img = face_img
+            # Đảm bảo đúng shape (64, 64, 3)
+            if img.shape[:2] != self.target_size:
+                img = cv2.resize(img, self.target_size)
+            # Nếu model yêu cầu 1 kênh thì chuyển sang grayscale
+            if self.target_channels == 1:
+                if img.shape[-1] == 3:
+                    img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+                img = np.expand_dims(img, axis=-1)
+            elif self.target_channels == 3:
+                if img.shape[-1] == 1:
+                    img = np.repeat(img, 3, axis=-1)
+            # Chuẩn hóa
+            img = img.astype('float32') / 255.0
+            img = np.expand_dims(img, axis=0)  # batch dimension
+            return img
         except Exception as e:
             raise Exception(f"Error in image preprocessing: {str(e)}")
     
@@ -122,7 +127,7 @@ class EmotionPredictor:
             return emotion_probs
             
         except Exception as e:
-            raise Exception(f"Error in probability prediction: {str(e)}")
+            raise Exception(f"Error in emotion prediction: {str(e)}")
 
     def get_emotion_color(self, emotion):
         """
