@@ -54,6 +54,10 @@ python main.py --image photo.jpg --no-show              # headless (servers)
 
 Add `--no-tta` for faster inference. It turns off flip test-time augmentation, which costs a little accuracy.
 
+**Webcam when the code runs on a remote server** (e.g. VS Code Remote-SSH): run `python webcam_app.py` and open
+http://localhost:8000 in your local browser. The browser streams your webcam to the server and draws the live predictions.
+VS Code forwards the port automatically; otherwise use `ssh -L 8000:localhost:8000 user@server`.
+
 To try the models quickly, run `demo.py`. It samples random held-out test images, prints the predictions next to the ground truth, and saves image grids to `demo_results/`:
 
 ```bash
