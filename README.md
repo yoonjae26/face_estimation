@@ -54,6 +54,14 @@ python main.py --image photo.jpg --no-show              # headless (servers)
 
 Add `--no-tta` for faster inference. It turns off flip test-time augmentation, which costs a little accuracy.
 
+To try the models quickly, run `demo.py`. It samples random held-out test images, prints the predictions next to the ground truth, and saves image grids to `demo_results/`:
+
+```bash
+python demo.py                          # 12 UTKFace + 12 FER2013 test images
+python demo.py --dataset utkface -n 24 --seed 3
+python demo.py --images my_photos/      # your own photos (file or folder)
+```
+
 From Python:
 
 ```python
