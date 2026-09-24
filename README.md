@@ -1,80 +1,124 @@
-# Face Estimation Project
+# Face Estimation: Age, Gender & Emotion
 
-This project is a real-time face analysis system that predicts age, gender, and emotion from camera input or static images. It includes a robust pipeline for preprocessing, inference, and visualization.
+Real-time face analysis that predicts **age**, **gender**, and **facial expression** from an image, a video, or a webcam.
+Faces are found with OpenCV's YuNet detector. Each face then goes through two fine-tuned EfficientNetV2-B0 networks: a multi-task age+gender model trained on UTKFace, and an expression model trained on FER2013.
 
-## Features
-- Real-time face detection and analysis.
-- Age, gender, and emotion prediction using pre-trained models.
-- Unified preprocessing pipeline for consistent input.
-- Debugging tools for model outputs and confidence scores.
-- Training scripts for custom models with data augmentation and learning rate scheduling.
+## Results (held-out test sets)
+
+| Task | Dataset (test split) | Metric | v1 (old) | **v2 (this version)** |
+|---|---|---|---|---|
+| Age | UTKFace, 2,371 images | MAE (years) | 6.6 (val only; trained on ages 20–42 only) | **4.55** |
+| Age | | within ±5 years | – | **66%** |
+| Gender | UTKFace, 2,371 images | accuracy | 83% (val) | **94.4%** |
+| Emotion | FER2013 official test, 7,178 images | accuracy | 63% (val, labels mis-mapped at inference) | **70.2%** (macro-F1 0.69) |
+
+For reference, human accuracy on FER2013 is about 65%, and published state-of-the-art results are 73–76%.
+
+Age error by group (years): 0–12: **1.4**, 13–19: 4.2, 20–29: **3.1**, 30–39: 5.4, 40–49: 7.1, 50–59: 7.0, 60–69: 7.2, 70+: 6.8.
+Older faces are harder because UTKFace has far fewer of them.
+
+![Test results](history/test_results.png)
+
+The full-pipeline check (detector → crop → models) on UTKFace validation images gives an age MAE of 4.5 and 95% gender accuracy, the same as feeding the dataset crops in directly. So the inference crops match what the models saw in training.
+
+## What was wrong in v1 and how it was fixed
+
+| Problem in v1 | Effect | Fix |
+|---|---|---|
+| `train_size = int(0.8 * len(dataset))` used the **number of batches** as if it were the number of images | The age model trained on only ~2.5% of the data, and only on ages 20–42 ([histogram](history/legacy_v1/age_distribution_v1.png)). It overfit badly and could not predict children or older people. | Reproducible stratified 80/10/10 split by age and gender (`utils/data.py`) |
+| The age-normalised dataset class in `train_age.py` was never used, and inference guessed a rescale (`if age < 1.5: age *= 100`) | Wrong ages | Age head is a softmax over 0–100 with the expected value as output (DEX-style), so the output is always in years |
+| Emotion labels at inference (`…Sad, Surprise, Neutral`) did not match the alphabetical training order (`…Neutral, Sad, Surprise`) | Neutral was shown as Sad, Sad as Surprise, Surprise as Neutral | One label list in `utils/config.py`, plus a unit test for the order |
+| Training used RGB images but inference passed BGR crops. EfficientNet inputs were divided by 255 twice. Faces were 64 px. | Predictions were skewed | One shared preprocessing function (`to_model_input`), RGB in [0, 255] with normalisation inside the model, 160 px (age/gender) and 112 px (emotion) |
+| Small CNNs trained from scratch; Haar cascade detector | Low accuracy, missed faces | ImageNet-pretrained EfficientNetV2-B0 with two-phase fine-tuning, augmentation, label smoothing and AdamW; YuNet detector with crop size calibrated on the training data |
+| Invalid path `"\data\1.jpg"`, duplicated predictor classes, hard-coded Windows paths, CI running `pytest` with no tests | Did not run; CI always failed | Clean CLI, one `FaceAnalyzer` class, and unit tests that run in CI |
 
 ## Installation
 
-1. Clone the repository:
-   ```bash
-   git clone <repository_url>
-   cd face_estimation
-   ```
+```bash
+git clone https://github.com/yoonjae26/face_estimation.git
+cd face_estimation
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-2. Create a Python virtual environment and activate it:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Download the pre-trained models and place them in the `models/` directory:
-   - `age_model.h5`
-   - `gender_model.h5`
-   - `emotion_model.h5`
+The trained models are included in `models/` (about 25 MB each), so you can run inference right away.
 
 ## Usage
 
-### Real-time Analysis
-Run the following command to start real-time face analysis:
 ```bash
-python main.py
+python main.py --image photo.jpg --output result.jpg   # analyse an image
+python main.py --webcam                                 # real-time (q = quit, s = screenshot)
+python main.py --video clip.mp4 --output out.mp4        # annotate a video
+python main.py --image photo.jpg --no-show              # headless (servers)
 ```
 
-### Static Image Analysis
-To analyze a static image, modify the `image_path` variable in `main.py` and run:
-```bash
-python main.py
+Add `--no-tta` for faster inference. It turns off flip test-time augmentation, which costs a little accuracy.
+
+From Python:
+
+```python
+import cv2
+from utils.predictor import FaceAnalyzer
+
+analyzer = FaceAnalyzer()
+for face in analyzer.analyze(cv2.imread("photo.jpg")):
+    print(face["box"], face["age"], face["gender"], face["emotion"], face["emotion_probs"])
 ```
 
-### Training
-To train models, use the scripts in the `train/` directory:
-- `train_age.py`
-- `train_gender.py`
-- `train_emotion.py`
+## Training
 
-Example:
-```bash
-python train/train_gender.py
+1. Download the datasets into `data/` (needs a Kaggle API token):
+
+   ```bash
+   kaggle datasets download -d jangedoo/utkface-new -p data && unzip -q data/utkface-new.zip -d data/utkface
+   kaggle datasets download -d msambare/fer2013 -p data && unzip -q data/fer2013.zip -d data/fer2013
+   ```
+
+   Expected layout: `data/utkface/UTKFace/*.jpg` and `data/fer2013/{train,test}/<emotion>/*.jpg`.
+
+2. Train and evaluate. Each model takes about 10 minutes on one modern GPU.
+
+   ```bash
+   python train/train_age_gender.py     # -> models/age_gender_model.keras, history/age_gender/
+   python train/train_emotion.py        # -> models/emotion_model.keras,    history/emotion/
+   python evaluate.py                   # -> history/test_metrics.json, history/test_results.png
+   ```
+
+   Scripts use GPU 0 by default. Set `CUDA_VISIBLE_DEVICES` to choose a different GPU. GPU memory is allocated on demand.
+
+Training details:
+- **Phase 1:** the backbone is frozen and only the new heads train (3 epochs).
+- **Phase 2:** the whole network is fine-tuned with AdamW, 1-epoch warmup and cosine decay. The best validation checkpoint is kept, with early stopping.
+- **Age/gender:** L1 loss on the expected age plus BCE for gender, with strong augmentation and random erasing.
+- **Emotion:** grayscale input, label smoothing 0.1. Stronger regularisation (MixUp, random erasing) narrowed the train/val gap but scored lower on test (69.4%), so it is off by default. The flags are kept in `train/train_emotion.py`.
+
+Training curves: [age/gender](history/age_gender/training_curves.png) · [emotion](history/emotion/training_curves.png).
+The v1 training logs are in `history/legacy_v1/`.
+
+## Project structure
+
+```
+main.py                   CLI demo (image / video / webcam)
+evaluate.py               test-set evaluation + plots
+utils/config.py           paths, image sizes, label lists, crop calibration
+utils/data.py             dataset parsing, splits, tf.data pipelines + augmentation
+utils/models.py           model definitions
+utils/face_detector.py    YuNet/Haar detection, square cropping, preprocessing
+utils/predictor.py        FaceAnalyzer (detect → crop → predict) + drawing
+train/                    training scripts and crop-size calibration
+tests/                    unit tests (run in CI)
+models/                   trained models + YuNet detector
 ```
 
-## Models
+## Limitations
 
-### Age Model
-- Predicts the age of a person from a face image.
-- Output: Integer value representing the predicted age.
+- Emotion recognition from a single frame is noisy. FER2013 itself has label noise, and Fear and Sad are often confused (see the confusion matrix).
+- Gender is predicted as binary, following the UTKFace annotations.
+- Accuracy drops on faces unlike the training data: strong profile views, heavy occlusion, very low resolution.
 
-### Gender Model
-- Predicts the gender of a person from a face image.
-- Output: "Male" or "Female" with a confidence score.
+## Data and license
 
-### Emotion Model
-- Predicts the emotion of a person from a face image.
-- Output: Emotion label (e.g., "Happy", "Sad") with a confidence score.
-
-## Notes
-- Ensure the `data/` directory is structured correctly for training and inference.
-- Use the `utils/` directory for helper functions and preprocessing.
-
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+The code is released under the MIT License (see `LICENSE`). The models were trained on
+[UTKFace](https://susanqq.github.io/UTKFace/), which is for non-commercial research only, and on
+[FER2013](https://www.kaggle.com/datasets/msambare/fer2013). Use of the trained weights is subject to those datasets' terms.
+The YuNet detector comes from [OpenCV Zoo](https://github.com/opencv/opencv_zoo) (MIT).

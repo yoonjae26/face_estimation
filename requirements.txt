@@ -1,8 +1,6 @@
-opencv-python 
-mtcnn 
-deepface 
-tensorflow 
-keras
-tensorflow 
-matplotlib 
+tensorflow>=2.16
+keras>=3.0
+opencv-python>=4.8
 numpy
+scikit-learn
+matplotlib

@@ -1,6 +1,8 @@
 __pycache__/
-*.h5
-*.pkl
+*.pyc
+.pytest_cache/
 .DS_Store
+*.h5
 data/
-models/
+logs/
+screenshot_*.jpg
