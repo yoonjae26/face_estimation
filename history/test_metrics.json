@@ -1,56 +1,87 @@
 {
   "tta": true,
   "age_gender": {
-    "test_images": 2371,
-    "age_mae": 4.546,
-    "age_within_5_years": 0.6643,
-    "age_mae_by_group": {
-      "0-12": {
-        "n": 339,
-        "mae": 1.38
+    "all_sources": {
+      "n": 13055,
+      "mae": 3.472,
+      "bias": -0.03,
+      "within_5_years": 0.7735
+    },
+    "per_source": {
+      "afad": {
+        "n": 6001,
+        "mae": 3.274,
+        "bias": -0.06,
+        "within_5_years": 0.7949,
+        "gender_accuracy": 0.9845
       },
-      "13-19": {
-        "n": 121,
-        "mae": 4.22
+      "appa": {
+        "n": 746,
+        "mae": 5.166,
+        "bias": 0.64,
+        "within_5_years": 0.6099
       },
-      "20-29": {
-        "n": 735,
-        "mae": 3.1
+      "megaage": {
+        "n": 3937,
+        "mae": 2.89,
+        "bias": -0.05,
+        "within_5_years": 0.8296
       },
-      "30-39": {
-        "n": 454,
-        "mae": 5.4
-      },
-      "40-49": {
-        "n": 224,
-        "mae": 7.07
-      },
-      "50-59": {
-        "n": 230,
-        "mae": 6.96
-      },
-      "60-69": {
-        "n": 131,
-        "mae": 7.23
-      },
-      "70-100": {
-        "n": 137,
-        "mae": 6.83
+      "utkface": {
+        "n": 2371,
+        "mae": 4.409,
+        "bias": -0.15,
+        "within_5_years": 0.6778,
+        "gender_accuracy": 0.9587
       }
     },
-    "gender_accuracy": 0.9439
+    "age_mae_by_group": {
+      "0-12": {
+        "n": 1770,
+        "mae": 1.72
+      },
+      "13-19": {
+        "n": 1587,
+        "mae": 3.28
+      },
+      "20-29": {
+        "n": 5543,
+        "mae": 2.71
+      },
+      "30-39": {
+        "n": 2779,
+        "mae": 4.78
+      },
+      "40-49": {
+        "n": 575,
+        "mae": 6.52
+      },
+      "50-59": {
+        "n": 388,
+        "mae": 5.99
+      },
+      "60-69": {
+        "n": 250,
+        "mae": 5.7
+      },
+      "70-100": {
+        "n": 163,
+        "mae": 8.01
+      }
+    },
+    "gender_accuracy": 0.9772
   },
   "emotion": {
     "test_images": 7178,
-    "accuracy": 0.7023,
-    "macro_f1": 0.6921,
+    "accuracy": 0.7016,
+    "macro_f1": 0.6915,
     "per_class_f1": {
-      "Angry": 0.6146,
+      "Angry": 0.6149,
       "Disgust": 0.7255,
-      "Fear": 0.5658,
-      "Happy": 0.882,
-      "Neutral": 0.6598,
-      "Sad": 0.5697,
+      "Fear": 0.5653,
+      "Happy": 0.8809,
+      "Neutral": 0.6583,
+      "Sad": 0.5685,
       "Surprise": 0.8272
     }
   }
