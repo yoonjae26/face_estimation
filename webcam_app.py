@@ -6,10 +6,15 @@ which runs the models and sends back age / gender / emotion for every face.
     python webcam_app.py            # then open http://localhost:8000 in your browser
     python webcam_app.py --port 8080
 
+The "Record GIF" button saves a short clip (video + live predictions panel) to docs/demo.gif,
+which the README shows.
+
 With VS Code Remote-SSH the port is forwarded automatically (see the "Ports" tab).
 Otherwise forward it yourself:  ssh -L 8000:localhost:8000 <user>@<server>
 """
 import argparse
+import base64
+import io
 import json
 import os
 import threading
@@ -47,11 +52,16 @@ PAGE = r"""<!doctype html>
   button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 16px; font-size:15px;
            cursor:pointer; width:100%; margin-bottom:12px; }
   #status { color:var(--muted); font-size:13px; margin-top:10px; }
+  #record { background:#e5484d; display:none; }
+  #record:disabled { opacity:.6; cursor:default; }
+  #saved a { color:var(--accent); }
 </style></head><body><main>
 <div class="stage"><canvas id="view" width="640" height="480"></canvas></div>
 <aside>
   <h1>Face Estimation Live</h1>
   <button id="start">Start webcam</button>
+  <button id="record">&#9679; Record 6 s GIF</button>
+  <div id="saved"></div>
   <div class="label">Age</div><div class="big" id="age">–</div>
   <div class="label">Gender</div><div class="big" id="gender">–</div>
   <div class="label">Emotion</div><div class="big" id="emotion">–</div>
@@ -131,6 +141,51 @@ async function loop() {
   }
 }
 
+// ---- GIF recording: video + a results panel, so the clip explains itself ----
+const REC_SECONDS = 6, REC_FPS = 8;
+const rec = document.createElement("canvas"); rec.width = 720; rec.height = 330;
+const rctx = rec.getContext("2d");
+
+function drawRecFrame() {
+  const vw = 440, vh = Math.round(vw * view.height / view.width), px = vw + 16;
+  rctx.fillStyle = "#0f1115"; rctx.fillRect(0, 0, rec.width, rec.height);
+  rctx.drawImage(view, 0, (rec.height - vh) / 2, vw, vh);
+  rctx.fillStyle = "#8a90a0"; rctx.font = "12px system-ui"; rctx.fillText("AGE", px, 30);
+  rctx.fillText("GENDER", px, 88); rctx.fillText("EMOTION", px, 146);
+  rctx.fillStyle = "#e8eaf0"; rctx.font = "bold 26px system-ui";
+  rctx.fillText(document.getElementById("age").textContent, px, 60);
+  rctx.fillText(document.getElementById("gender").textContent, px, 118);
+  rctx.fillText(document.getElementById("emotion").textContent, px, 176);
+  rctx.font = "12px system-ui";
+  EMOTIONS.forEach((e, i) => {
+    const y = 196 + i * 18, p = smooth ? smooth.probs[e] : 0;
+    rctx.fillStyle = "#e8eaf0"; rctx.fillText(e, px, y + 10);
+    rctx.fillStyle = "#262a33"; rctx.fillRect(px + 62, y, 150, 10);
+    rctx.fillStyle = COLORS[e]; rctx.fillRect(px + 62, y, 150 * p, 10);
+    rctx.fillStyle = "#8a90a0"; rctx.fillText(Math.round(p * 100) + "%", px + 220, y + 10);
+  });
+  return rec.toDataURL("image/jpeg", 0.9);
+}
+
+document.getElementById("record").onclick = async () => {
+  const btn = document.getElementById("record"), saved = document.getElementById("saved");
+  btn.disabled = true; saved.textContent = "";
+  for (let n = 3; n > 0; n--) { btn.textContent = `Starting in ${n}...`; await new Promise(r => setTimeout(r, 1000)); }
+  const frames = [];
+  for (let i = 0; i < REC_SECONDS * REC_FPS; i++) {
+    btn.textContent = `Recording... ${Math.ceil(REC_SECONDS - i / REC_FPS)} s`;
+    frames.push(drawRecFrame());
+    await new Promise(r => setTimeout(r, 1000 / REC_FPS));
+  }
+  btn.textContent = "Saving GIF...";
+  try {
+    const res = await (await fetch("/save_gif", {method: "POST", body: JSON.stringify({frames, fps: REC_FPS})})).json();
+    saved.innerHTML = `Saved <b>${res.path}</b> (${res.size_mb} MB) &middot; <a href="/demo.gif?${Date.now()}"
+      target="_blank">preview</a>`;
+  } catch (e) { saved.textContent = "Saving failed: " + e; }
+  btn.disabled = false; btn.innerHTML = "&#9679; Record again";
+};
+
 document.getElementById("start").onclick = async () => {
   try {
     video.srcObject = await navigator.mediaDevices.getUserMedia({video: {width: 640, height: 480}});
@@ -140,10 +195,30 @@ document.getElementById("start").onclick = async () => {
   grab.width = 640; grab.height = Math.round(640 * h / w);
   view.width = 960; view.height = Math.round(960 * h / w);
   document.getElementById("start").style.display = "none";
+  document.getElementById("record").style.display = "block";
   requestAnimationFrame(draw); loop();
 };
 </script></body></html>
 """.replace("__EMOTIONS__", json.dumps(config.EMOTION_LABELS))
+
+
+GIF_PATH = os.path.join(config.ROOT_DIR, "docs", "demo.gif")
+
+
+def save_gif(frames_b64, fps, path=GIF_PATH):
+    """Turn the browser's JPEG data-URLs into an optimised looping GIF. Returns its size in bytes."""
+    from PIL import Image
+
+    frames = [Image.open(io.BytesIO(base64.b64decode(f.split(",", 1)[1]))).convert("RGB") for f in frames_b64]
+    if not frames:
+        raise ValueError("no frames")
+    # One shared adaptive palette keeps colours stable between frames and the file small.
+    palette = frames[len(frames) // 2].quantize(colors=192, method=Image.Quantize.MEDIANCUT)
+    frames = [f.quantize(palette=palette, dither=Image.Dither.NONE) for f in frames]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=int(1000 / fps), loop=0,
+                   optimize=True, disposal=1)
+    return os.path.getsize(path)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -160,13 +235,22 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+        elif self.path.startswith("/demo.gif") and os.path.exists(GIF_PATH):
+            with open(GIF_PATH, "rb") as f:
+                self._send(200, f.read(), "image/gif")
         else:
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
+        data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if self.path == "/save_gif":
+            req = json.loads(data)
+            size = save_gif(req["frames"], req.get("fps", 8))
+            print(f"Saved {GIF_PATH} ({size / 1e6:.1f} MB)")
+            body = {"path": os.path.relpath(GIF_PATH, config.ROOT_DIR), "size_mb": round(size / 1e6, 1)}
+            return self._send(200, json.dumps(body).encode(), "application/json")
         if self.path != "/predict":
             return self._send(404, b"not found", "text/plain")
-        data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
         if frame is None:
             return self._send(400, b"[]", "application/json")
