@@ -9,7 +9,9 @@
 ![TensorFlow](https://img.shields.io/badge/TensorFlow-2.16%2B-FF6F00?logo=tensorflow&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-<img src="docs/demo.gif" alt="Live webcam demo: the face is boxed and labelled with age, gender and emotion, with a panel of emotion probabilities" width="720">
+<img src="docs/demo.gif" alt="Demo: random held-out test faces are detected, then labelled with predicted age (next to the true age), gender and emotion probabilities" width="720">
+
+<sub>Random held-out test faces (UTKFace, MegaAge-Asian, APPA-REAL) run through the full pipeline, each prediction shown next to its ground truth. Rebuild with <code>python docs/make_demo_gif.py</code>.</sub>
 
 | Age error | Gender accuracy | Emotion accuracy | Speed (1 GPU) |
 |:---:|:---:|:---:|:---:|
@@ -85,7 +87,7 @@ python main.py --webcam            # q = quit, s = screenshot
 python webcam_app.py               # then open http://localhost:8000 in your browser
 ```
 
-Your browser sends webcam frames to the server and draws the live predictions. VS Code Remote-SSH forwards the port automatically; otherwise use `ssh -L 8000:localhost:8000 user@server`. Click **Record 6 s GIF** to save a clip like the one above to `docs/demo.gif`.
+Your browser sends webcam frames to the server and draws the live predictions. VS Code Remote-SSH forwards the port automatically; otherwise use `ssh -L 8000:localhost:8000 user@server`. Click **Record 6 s GIF** to save a clip of your own webcam session to `docs/demo.gif`.
 
 ### Photos and videos
 
@@ -173,7 +175,7 @@ utils/                  config, data pipelines, models, face detection, FaceAnal
 train/                  data preparation, training scripts, crop calibration
 tests/                  unit tests (run in CI)
 models/                 trained models + YuNet face detector
-docs/                   README images
+docs/                   README images + make_demo_gif.py
 ```
 
 ## ⚠️ Limitations
